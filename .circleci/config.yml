@@ -1,0 +1,75 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/python:3.11.7
+    working_directory: ~/test_oc_p13
+    environment:
+      DJANGO_SETTINGS_MODULE: oc_lettings_site.settings
+      PYTHONPATH: /home/circleci/test_oc_p13
+    steps:
+      - checkout
+      - run: pip install -r requirements.txt
+      - run:
+          name: Initialize Django for Pylint
+          command: python -c "import os; os.environ['DJANGO_SETTINGS_MODULE'] = 'oc_lettings_site.settings'; import django; django.setup()"
+      - run: pylint --load-plugins pylint_django .
+      - run:
+          name: Run Tests
+          command: coverage run --source='.' manage.py test
+      - run:
+          name: Check Test Coverage
+          command: coverage report --fail-under=80
+
+  containerise:
+    machine: true
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Authenticate to registry
+          command: echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USER" --password-stdin
+      - run:
+          name: Build image
+          command: docker build --tag yourdockerusername/projectname:$CIRCLE_SHA1 .
+      - run:
+          name: Push image
+          command: docker push yourdockerusername/projectname:$CIRCLE_SHA1
+      - run:
+          name: Tag the image as latest
+          command: docker tag yourdockerusername/projectname:$CIRCLE_SHA1 yourdockerusername/projectname:latest
+      - run:
+          name: Push the latest tag
+          command: docker push yourdockerusername/projectname:latest   
+          
+  # Ici, vous devrez ajouter vos propres commandes pour déployer sur Render
+  # Ceci est un placeholder pour indiquer où et comment intégrer le déploiement vers Render.
+  deploy-production:
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Deploy to Render
+          command: |
+            # Commandes pour déployer sur Render, par exemple via CLI ou API
+            echo "Deploying to Render..."                 
+
+workflows:
+  build-test-deploy:
+    jobs:
+      - build-and-test
+      - containerise:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only:
+                - main
+      - deploy-production:
+          requires:
+            - containerise
+          filters:
+            branches:
+              only:
+                - main
